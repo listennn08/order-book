@@ -1,27 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
+import { DisplayQuote, OrderBookResp, Quote } from "../type"
 
-type Quote = [number, number]
-
-interface OrderBookResp {
-  topic: string
-  data: {
-    asks: Quote[]
-    bids: Quote[]
-    prevSeqNum: number
-    seqNum: number
-    timestamp: number
-    type: string
-  }
-}
-
-interface DisplayQuote {
-  price: number
-  size: number
-  total: number
-  sizeChange: '+' | '-' | ''
-  isNew: boolean
-  percentage: number
-}
 
 const ORDER_BOOK_TOPIC = 'update:BTCPFC'
 export const useOrderBook = () => {
