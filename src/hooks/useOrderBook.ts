@@ -103,7 +103,6 @@ export const useOrderBook = () => {
 
     setBids(updatedBids)
     setAsks(updatedAsks)
-    await new Promise(resolve => setTimeout(resolve, 500))
   }, [resubscribe])
 
   useEffect(() => {
