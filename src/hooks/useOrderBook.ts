@@ -10,7 +10,6 @@ export const useOrderBook = () => {
   const [top8Bids, setTop8Bids] = useState<DisplayQuote[]>([])
   const [top8Asks, setTop8Asks] = useState<DisplayQuote[]>([])
   const lastSeqNum = useRef<number | null>(null)
-  const throttleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingBids = useRef<Quote[]>([])
   const pendingAsks = useRef<Quote[]>([])
 
@@ -187,19 +186,14 @@ export const useOrderBook = () => {
         pendingBids.current = []
         pendingAsks.current = []
       }
-    }, 100)
+    }, 150)
 
     return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
-    if (throttleTimeout.current) return
-
-    throttleTimeout.current = setTimeout(() => {
-      setTop8Bids((prev) => computedQuotes(prev, bids, 8, 'bids'));
-      setTop8Asks((prev) => computedQuotes(prev, asks, 8, 'asks'));
-      throttleTimeout.current = null
-    }, 200)
+    setTop8Bids((prev) => computedQuotes(prev, bids, 8, 'bids'));
+    setTop8Asks((prev) => computedQuotes(prev, asks, 8, 'asks'));
   }, [bids, asks]);
 
   return { top8Bids, top8Asks }
