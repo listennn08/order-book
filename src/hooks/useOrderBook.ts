@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { DisplayQuote, OrderBookResp, Quote } from "../type"
 
 
@@ -9,7 +9,10 @@ export const useOrderBook = () => {
   const [asks, setAsks] = useState<Quote[]>([])
   const [top8Bids, setTop8Bids] = useState<DisplayQuote[]>([])
   const [top8Asks, setTop8Asks] = useState<DisplayQuote[]>([])
-  const [, setLastSeqNum] = useState<number | null>(null)
+  const lastSeqNum = useRef<number | null>(null)
+  const throttleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingBids = useRef<Quote[]>([])
+  const pendingAsks = useRef<Quote[]>([])
 
   useEffect(() => {
     const ws = new WebSocket('wss://ws.btse.com/ws/oss/futures')
@@ -59,13 +62,15 @@ export const useOrderBook = () => {
 
     const { type, asks, bids, seqNum, prevSeqNum } = resp.data
 
-    setLastSeqNum((prev) => {
-      if (prev && prevSeqNum && prevSeqNum !== prev) {
-        resubscribe()
-        return null
-      }
-      return seqNum
-    })
+    // Check sequence continuity
+    if (lastSeqNum.current !== null && prevSeqNum !== lastSeqNum.current) {
+      console.warn('[⚠️] Sequence mismatch, resubscribing...')
+      resubscribe()
+      lastSeqNum.current = null
+      return
+    }
+
+    lastSeqNum.current = seqNum
 
     const updatedBids = type === 'snapshot' ? bids : updateQuotes(bids, asks);
     const updatedAsks = type === 'snapshot' ? asks : updateQuotes(asks, asks);
@@ -74,14 +79,20 @@ export const useOrderBook = () => {
     const bestBid = Math.min(...updatedBids.map(([p]) => Number(p)));
     const bestAsk = Math.max(...updatedAsks.map(([p]) => Number(p)));
 
-    if (bestBid >= bestAsk) {
-      console.warn('Crossed book — reloading snapshot');
-      resubscribe()
-      return;
+    if (type === 'snapshot') {
+      setBids(updatedBids)
+      setAsks(updatedAsks)
+      return
     }
 
-    setBids(updatedBids)
-    setAsks(updatedAsks)
+    if (bestBid >= bestAsk) {
+      console.warn('[❌] Crossed order book detected — resubscribing...')
+      resubscribe()
+      return
+    }
+
+    pendingBids.current.push(...updatedBids)
+    pendingAsks.current.push(...updatedAsks)
   }, [resubscribe])
 
   useEffect(() => {
@@ -122,10 +133,11 @@ export const useOrderBook = () => {
   
     let runningTotal = 0
   
+    let result: DisplayQuote[] = []
     if (type === 'bids') {
-      return sliced.map(([price, size]) => {
+      result = sliced.map(([price, size]) => {
         runningTotal += Number(size);
-        const prevQuote = prev.find((q) => q.price === price);
+        const prevQuote = prev.find((q) => q.price.toFixed(1) === price.toFixed(1));
         return {
           price,
           size,
@@ -143,7 +155,6 @@ export const useOrderBook = () => {
         };
       });
     } else {
-      const result: DisplayQuote[] = [];
       const totalSize = sliced.reduce((acc, [, size]) => acc + Number(size), 0);
 
       for (let i = sliced.length - 1; i >= 0; i--) {
@@ -166,15 +177,54 @@ export const useOrderBook = () => {
           isNew: prevQuote === undefined,
         });
       }
-
-      return result;
     }
 
+    while (result.length < limit) {
+      if (type === 'bids') {
+        result.push({
+          price: 0,
+          size: 0,
+          total: 0,
+          percentage: 0,
+          sizeChange: '',
+          isNew: false,
+        })
+      } else {
+        result.unshift({
+          price: 0,
+          size: 0,
+          total: 0,
+          percentage: 0,
+          sizeChange: '',
+          isNew: false,
+        })
+      }
+    }
+
+    return result
   }
 
   useEffect(() => {
-    setTop8Bids((prev) => computedQuotes(prev, bids, 8, 'bids'));
-    setTop8Asks((prev) => computedQuotes(prev, asks, 8, 'asks'));
+    const interval = setInterval(() => {
+      if (pendingBids.current.length > 0 || pendingAsks.current.length > 0) {
+        setBids((prev) => updateQuotes(prev, pendingBids.current))
+        setAsks((prev) => updateQuotes(prev, pendingAsks.current))
+        pendingBids.current = []
+        pendingAsks.current = []
+      }
+    }, 100)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (throttleTimeout.current) return
+
+    throttleTimeout.current = setTimeout(() => {
+      setTop8Bids((prev) => computedQuotes(prev, bids, 8, 'bids'));
+      setTop8Asks((prev) => computedQuotes(prev, asks, 8, 'asks'));
+      throttleTimeout.current = null
+    }, 200)
   }, [bids, asks]);
 
   return { top8Bids, top8Asks }

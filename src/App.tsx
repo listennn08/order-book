@@ -27,15 +27,15 @@ function App() {
               Total
             </div>
           </div>
-          {top8Asks.map((ask) => (
-            <QuoteRow key={ask.price} data={ask} type="asks" />
+          {top8Asks.map((ask, index) => (
+            <QuoteRow key={`${ask.price.toFixed(1)}-${index}`} data={ask} type="asks" />
           ))}
           <div className={`flex items-center justify-center gap-x-1 font-bold text-center leading-8 ${lastPrice?.priceChange === '+' ? 'text-green-300 bg-green-100' : lastPrice?.priceChange === '-' ? 'text-red-300 bg-red-100' : 'bg-blue-200'}`}>
             {formatValue(lastPrice?.price || 0, true)}
             {lastPrice?.priceChange === '' ? null : <IconArrowDown className={`w-4 ${lastPrice?.priceChange === '+' ? 'rotate-180' : ''}`} />}
           </div>
-          {top8Bids.map((bid) => (
-            <QuoteRow key={bid.price} data={bid} type="bids" />
+          {top8Bids.map((bid, index) => (
+            <QuoteRow key={`${bid.price.toFixed(1)}-${index}`} data={bid} type="bids" />
           ))}
         </div>
       </div>

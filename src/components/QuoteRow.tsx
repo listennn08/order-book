@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { DisplayQuote } from "../type"
 import { formatValue } from "../utils"
 
@@ -7,6 +8,26 @@ export const QuoteRow = ({data, type }: { data: DisplayQuote, type: 'asks' | 'bi
   const color = type === 'asks' ? 'text-red-300' : 'text-green-300'
   const bgFlashColor = type === 'asks' ? 'bg-red-200' : 'bg-green-200'
   const bgAccumulativeColor = type === 'asks' ? 'bg-red-100' : 'bg-green-100'
+  const [newColor, setNewColor] = useState(isNew ?bgFlashColor : '')
+  const [sizeClass, setSizeClass] = useState(getSizeClass())
+
+  useEffect(() => {
+    if (isNew) {
+      setTimeout(() => {
+        setNewColor('')
+      }, 100)
+    }
+  }, [isNew])
+
+  useEffect(() => {
+    if (sizeClass) {
+      setTimeout(() => {
+        setSizeClass('')
+      }, 100)
+    }
+  }, [sizeClass])
+
+
 
   function getSizeClass() {
     if (sizeChange === '+') {
@@ -17,13 +38,24 @@ export const QuoteRow = ({data, type }: { data: DisplayQuote, type: 'asks' | 'bi
     return ''
   }
 
+  if (price === 0) {
+    return (
+      <div className="grid grid-cols-3 text-gray-400 h-6 items-center">
+        <div>—</div>
+        <div className="text-right">—</div>
+        <div className="text-right">—</div>
+      </div>
+    )
+  }
+
+
 
   return (
-    <div className={`grid grid-cols-3 hover:bg-blue-300 ${isNew ? bgFlashColor : ''} transition-all duration-100 ease-in-out`}>
+    <div className={`grid grid-cols-3 hover:bg-blue-300 bg-blue-200 ${newColor} transition-all duration-200 ease-in-out`}>
       <div className={color}>
         {formatValue(price, true)}
       </div>
-      <div className={`text-right ${getSizeClass()} transition-all duration-100 ease-in-out`}>
+      <div className={`text-right ${sizeClass} transition-all duration-100 ease-in-out`}>
         {formatValue(size, false)}
       </div>
       <div className="text-right relative">
