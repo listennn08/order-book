@@ -60,7 +60,7 @@ export const useOrderBook = () => {
       return
     }
 
-    const { type, asks, bids, seqNum, prevSeqNum } = resp.data
+    const { type, asks: newAsks, bids: newBids, seqNum, prevSeqNum } = resp.data
 
     // Check sequence continuity
     if (lastSeqNum.current !== null && prevSeqNum !== lastSeqNum.current) {
@@ -72,16 +72,12 @@ export const useOrderBook = () => {
 
     lastSeqNum.current = seqNum
 
-    const updatedBids = type === 'snapshot' ? bids : updateQuotes(bids, asks);
-    const updatedAsks = type === 'snapshot' ? asks : updateQuotes(asks, asks);
-
-
-    const bestBid = Math.min(...updatedBids.map(([p]) => Number(p)));
-    const bestAsk = Math.max(...updatedAsks.map(([p]) => Number(p)));
+    const bestBid = Math.min(...newBids.map(([p]) => Number(p)));
+    const bestAsk = Math.max(...newAsks.map(([p]) => Number(p)));
 
     if (type === 'snapshot') {
-      setBids(updatedBids)
-      setAsks(updatedAsks)
+      setBids(newBids)
+      setAsks(newAsks)
       return
     }
 
@@ -91,8 +87,9 @@ export const useOrderBook = () => {
       return
     }
 
-    pendingBids.current.push(...updatedBids)
-    pendingAsks.current.push(...updatedAsks)
+    console.log('?')
+    pendingBids.current.push(...newBids)
+    pendingAsks.current.push(...newAsks)
   }, [resubscribe])
 
   useEffect(() => {
@@ -176,28 +173,6 @@ export const useOrderBook = () => {
               : '',
           isNew: prevQuote === undefined,
         });
-      }
-    }
-
-    while (result.length < limit) {
-      if (type === 'bids') {
-        result.push({
-          price: 0,
-          size: 0,
-          total: 0,
-          percentage: 0,
-          sizeChange: '',
-          isNew: false,
-        })
-      } else {
-        result.unshift({
-          price: 0,
-          size: 0,
-          total: 0,
-          percentage: 0,
-          sizeChange: '',
-          isNew: false,
-        })
       }
     }
 
