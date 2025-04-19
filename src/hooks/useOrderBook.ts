@@ -175,5 +175,15 @@ export const useOrderBook = () => {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    const bestAsk = top8Asks[0]?.price
+    const bestBid = top8Bids[0]?.price
+
+    if (bestAsk && bestBid && bestAsk <= bestBid) {
+      console.log('Crossed orderbook happened, resubscribing...')
+      resubscribe()
+    }
+  }, [resubscribe, top8Asks, top8Bids])
+
   return { top8Bids, top8Asks }
 }
