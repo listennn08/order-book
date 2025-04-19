@@ -21,15 +21,17 @@ interface LastPrice {
   timestamp: number
   priceChange: '+' | '-' | ''
 }
+
+let ws: WebSocket | null = null
 export const useLastPrice = () => {
-  const [ws, setWs] = useState<WebSocket | null>(null)
   const [lastPrice, setLastPrice] = useState<LastPrice | null>(null)
 
   useEffect(() => {
-    const ws = new WebSocket('wss://ws.btse.com/ws/futures')
-    setWs(ws)
+    if (ws) return
+    ws = new WebSocket('wss://ws.btse.com/ws/futures')
 
     return () => {
+      if (ws?.readyState !== WebSocket.OPEN) return
       ws.close()
     }
   }, [])
@@ -54,6 +56,7 @@ export const useLastPrice = () => {
   useEffect(() => {
     if (!ws) return
     ws.onopen = () => {
+      if (ws?.readyState !== WebSocket.OPEN) return
       console.log('Connected to LastPrice WebSocket server')
       ws.send(JSON.stringify({
         op: 'subscribe',
@@ -63,13 +66,14 @@ export const useLastPrice = () => {
     ws.onmessage = handleReceiveMessage
   
     ws.onclose = () => {
+      if (ws?.readyState !== WebSocket.OPEN) return
       console.log('Disconnected from WebSocket server')
       ws.send(JSON.stringify({
         op: 'unsubscribe',
         args: ["tradeHistoryApi:BTCPFC"]
       }))
     }
-  }, [ws, handleReceiveMessage])
+  }, [handleReceiveMessage])
 
 
   return { lastPrice }

@@ -2,30 +2,28 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { DisplayQuote, OrderBookResp, Quote } from "../type"
 
 
+let ws: WebSocket | null = null
 const ORDER_BOOK_TOPIC = 'update:BTCPFC'
 export const useOrderBook = () => {
-  const [ws, setWs] = useState<WebSocket | null>(null)
-  const [bids, setBids] = useState<Quote[]>([])
-  const [asks, setAsks] = useState<Quote[]>([])
+  const bids = useRef<Quote[]>([])
+  const asks = useRef<Quote[]>([])
   const [top8Bids, setTop8Bids] = useState<DisplayQuote[]>([])
   const [top8Asks, setTop8Asks] = useState<DisplayQuote[]>([])
   const lastSeqNum = useRef<number | null>(null)
-  const pendingBids = useRef<Quote[]>([])
-  const pendingAsks = useRef<Quote[]>([])
 
   useEffect(() => {
-    const ws = new WebSocket('wss://ws.btse.com/ws/oss/futures')
-    setWs(ws)
+    if (ws) return
+    ws = new WebSocket('wss://ws.btse.com/ws/oss/futures')
 
     return () => {
+      if (ws?.readyState !== WebSocket.OPEN) return
       console.log('Closing WebSocket connection')
-      ws?.close()
+      ws.close()
     }
   }, [])
 
   const resubscribe = useCallback(() => {
-    if (!ws) return
-    // console.log('Resubscribing to WebSocket server')
+    if (ws?.readyState !== WebSocket.OPEN) return
     ws.send(JSON.stringify({
       op: 'unsubscribe',
       args: [ORDER_BOOK_TOPIC]
@@ -34,14 +32,14 @@ export const useOrderBook = () => {
       op: 'subscribe',
       args: [ORDER_BOOK_TOPIC]
     }))
-  }, [ws])
+  }, [])
 
   function assertIsOrderBookResp(data: unknown): data is OrderBookResp {
     return (data as OrderBookResp).topic === ORDER_BOOK_TOPIC
   }
 
   function updateQuotes(prev: Quote[], changes: Quote[]) {
-    const map = new Map(prev.map(([p, s]) => [p, s]));
+    const map = new Map(prev);
     for (const [price, size] of changes) {
       if (size === 0) {
         map.delete(price);
@@ -49,7 +47,7 @@ export const useOrderBook = () => {
         map.set(price, size);
       }
     }
-    return Array.from(map.entries()) as Quote[];
+    return Array.from(map.entries())
   }
 
   const handleReceiveMessage = useCallback(async (event: MessageEvent) => {
@@ -61,39 +59,28 @@ export const useOrderBook = () => {
 
     const { type, asks: newAsks, bids: newBids, seqNum, prevSeqNum } = resp.data
 
-    // Check sequence continuity
+    if (type === 'snapshot') {
+      lastSeqNum.current = seqNum
+      bids.current = newBids
+      asks.current = newAsks
+      return
+    }
+
     if (lastSeqNum.current !== null && prevSeqNum !== lastSeqNum.current) {
       console.warn('[⚠️] Sequence mismatch, resubscribing...')
       resubscribe()
-      lastSeqNum.current = null
       return
     }
 
     lastSeqNum.current = seqNum
-
-    const bestBid = Math.min(...newBids.map(([p]) => Number(p)));
-    const bestAsk = Math.max(...newAsks.map(([p]) => Number(p)));
-
-    if (type === 'snapshot') {
-      setBids(newBids)
-      setAsks(newAsks)
-      return
-    }
-
-    if (bestBid >= bestAsk) {
-      console.warn('[❌] Crossed order book detected — resubscribing...')
-      resubscribe()
-      return
-    }
-
-    console.log('?')
-    pendingBids.current.push(...newBids)
-    pendingAsks.current.push(...newAsks)
+    bids.current = updateQuotes(bids.current, newBids)
+    asks.current = updateQuotes(asks.current, newAsks)
   }, [resubscribe])
 
   useEffect(() => {
     if (!ws) return
     ws.onopen = () => {
+      if (ws?.readyState !== WebSocket.OPEN) return
       console.log('Connected to WebSocket server')
       ws.send(JSON.stringify({
         op: 'subscribe',
@@ -103,13 +90,14 @@ export const useOrderBook = () => {
     ws.onmessage = handleReceiveMessage
   
     ws.onclose = () => {
+      if (ws?.readyState !== WebSocket.OPEN) return
       console.log('Disconnected from WebSocket server')
       ws.send(JSON.stringify({
         op: 'unsubscribe',
         args: [ORDER_BOOK_TOPIC]
       }))
     }
-  }, [ws, handleReceiveMessage])
+  }, [handleReceiveMessage])
 
 
   function computedQuotes(
@@ -122,6 +110,7 @@ export const useOrderBook = () => {
   
     const normalized = quotes
       .map(([p, s]) => [Number(p), Number(s)] as const)
+      .filter(([, size]) => size > 0)
       .sort((a, b) => b[0] - a[0]);
   
     const sliced = (type === 'bids' ? normalized.slice(0, limit) : normalized.slice(normalized.length - limit))
@@ -180,21 +169,11 @@ export const useOrderBook = () => {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (pendingBids.current.length > 0 || pendingAsks.current.length > 0) {
-        setBids((prev) => updateQuotes(prev, pendingBids.current))
-        setAsks((prev) => updateQuotes(prev, pendingAsks.current))
-        pendingBids.current = []
-        pendingAsks.current = []
-      }
+      setTop8Bids((prev) => computedQuotes(prev, bids.current, 8, 'bids'));
+      setTop8Asks((prev) => computedQuotes(prev, asks.current, 8, 'asks'));
     }, 150)
-
     return () => clearInterval(interval)
   }, [])
-
-  useEffect(() => {
-    setTop8Bids((prev) => computedQuotes(prev, bids, 8, 'bids'));
-    setTop8Asks((prev) => computedQuotes(prev, asks, 8, 'asks'));
-  }, [bids, asks]);
 
   return { top8Bids, top8Asks }
 }
